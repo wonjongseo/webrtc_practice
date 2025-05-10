@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebRTC Browser</title>
+  </head>
+  <body>
+    <h2>WebRTC Video Stream from iOS</h2>
+    <video id="remoteVideo" autoplay playsinline></video>
+
+    <!-- socket.io 클라이언트 CDN (v4 권장) -->
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script>
+      const remoteVideo = document.getElementById("remoteVideo");
+      let peerConnection;
+
+      // signaling 서버 주소 명시 (필요 시 IP 주소로 바꿔야 함)
+      const socket = io("http://localhost:3000"); // ← 여기를 실제 서버 IP로 수정하세요
+
+      socket.on("connect", () => {
+        console.log("Connected to signaling server");
+      });
+
+      socket.on("offer", async (offer) => {
+        console.log("Received offer:", offer);
+
+        peerConnection = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        });
+
+        peerConnection.ontrack = (event) => {
+          console.log("Received track");
+          remoteVideo.srcObject = event.streams[0];
+        };
+
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit("candidate", event.candidate);
+          }
+        };
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        socket.emit("answer", {
+          type: answer.type,
+          sdp: answer.sdp,
+        });
+      });
+
+      socket.on("candidate", (candidate) => {
+        if (peerConnection) {
+          peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+      });
+    </script>
+  </body>
+</html>
